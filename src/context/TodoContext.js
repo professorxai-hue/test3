@@ -1,52 +1,113 @@
-import React, { createContext, useContext, useState } from 'react';
-import { useAuth } from './AuthContext';
+import React, { createContext, useContext, useState, useCallback } from 'react';
+import { useAuth, PERMISSIONS } from './AuthContext';
 
 const TodoContext = createContext(null);
 
-export const TodoProvider = ({ children }) => {
-  const { currentUser } = useAuth;
-  const [todos, setTodos] = useState([
-    { id: 1, text: 'Admin task - Setup server', completed: false, userId: 1, userName: 'Admin User' },
-    { id: 2, text: 'Manager task - Review reports', completed: true, userId: 2, userName: 'Manager User' },
-    { id: 3, text: 'User task - Complete profile', completed: false, userId: 3, userName: 'Regular User' }
-  ]);
+const INITIAL_TODOS = [
+  { id: 1, title: 'Review project requirements', completed: false, assignedTo: 2, createdBy: 1, priority: 'high' },
+  { id: 2, title: 'Setup development environment', completed: true, assignedTo: 3, createdBy: 2, priority: 'medium' },
+  { id: 3, title: 'Write documentation', completed: false, assignedTo: 3, createdBy: 2, priority: 'low' }
+];
 
-  const addTodo = (text) => {
-    if (!currentUser) return;
+export const TodoProvider = ({ children }) => {
+  const [todos, setTodos] = useState( => {
+    const saved = localStorage.getItem('rbac_todos');
+    return saved ? JSON.parse(saved) : INITIAL_TODOS;
+  });
+  const { user, hasPermission } = useAuth;
+
+  const saveTodos = useCallback((newTodos) => {
+    setTodos(newTodos);
+    localStorage.setItem('rbac_todos', JSON.stringify(newTodos));
+  }, );
+
+  const addTodo = useCallback((title, priority = 'medium', assignedTo = null) => {
+    if (!hasPermission(PERMISSIONS.CREATE_TODO)) {
+      return { success: false, error: 'Permission denied' };
+    }
     const newTodo = {
       id: Date.now,
-      text,
+      title,
       completed: false,
-      userId: currentUser.id,
-      userName: currentUser.name
+      assignedTo: assignedTo || user?.id,
+      createdBy: user?.id,
+      priority,
+      createdAt: new Date.toISOString
     };
-    setTodos([...todos, newTodo]);
-  };
+    saveTodos([...todos, newTodo]);
+    return { success: true, todo: newTodo };
+  }, [todos, user, hasPermission, saveTodos]);
 
-  const updateTodo = (id, updates) => {
-    setTodos(todos.map(todo => 
-      todo.id === id ? { ...todo, ...updates } : todo
-    ));
-  };
+  const updateTodo = useCallback((id, updates) => {
+    if (!hasPermission(PERMISSIONS.UPDATE_TODO)) {
+      return { success: false, error: 'Permission denied' };
+    }
+    const todo = todos.find(t => t.id === id);
+    if (!todo) {
+      return { success: false, error: 'Todo not found' };
+    }
+    // Users can only update their own todos unless they have ASSIGN permission
+    if (todo.assignedTo !== user?.id && !hasPermission(PERMISSIONS.ASSIGN_TODOS)) {
+      return { success: false, error: 'You can only update your own todos' };
+    }
+    const updatedTodos = todos.map(t => 
+      t.id === id ? { ...t, ...updates, updatedAt: new Date.toISOString } : t
+    );
+    saveTodos(updatedTodos);
+    return { success: true };
+  }, [todos, user, hasPermission, saveTodos]);
 
-  const deleteTodo = (id) => {
-    setTodos(todos.filter(todo => todo.id !== id));
-  };
+  const deleteTodo = useCallback((id) => {
+    if (!hasPermission(PERMISSIONS.DELETE_TODO)) {
+      return { success: false, error: 'Permission denied' };
+    }
+    const todo = todos.find(t => t.id === id);
+    if (!todo) {
+      return { success: false, error: 'Todo not found' };
+    }
+    saveTodos(todos.filter(t => t.id !== id));
+    return { success: true };
+  }, [todos, hasPermission, saveTodos]);
 
-  const toggleTodo = (id) => {
-    setTodos(todos.map(todo =>
-      todo.id === id ? { ...todo, completed: !todo.completed } : todo
-    ));
+  const toggleTodo = useCallback((id) => {
+    const todo = todos.find(t => t.id === id);
+    if (todo) {
+      return updateTodo(id, { completed: !todo.completed });
+    }
+    return { success: false, error: 'Todo not found' };
+  }, [todos, updateTodo]);
+
+  const assignTodo = useCallback((todoId, userId) => {
+    if (!hasPermission(PERMISSIONS.ASSIGN_TODOS)) {
+      return { success: false, error: 'Permission denied' };
+    }
+    return updateTodo(todoId, { assignedTo: userId });
+  }, [hasPermission, updateTodo]);
+
+  const getVisibleTodos = useCallback( => {
+    if (!hasPermission(PERMISSIONS.READ_TODO)) {
+      return ;
+    }
+    // Admins and managers see all todos
+    if (hasPermission(PERMISSIONS.ASSIGN_TODOS)) {
+      return todos;
+    }
+    // Regular users see only their assigned todos
+    return todos.filter(t => t.assignedTo === user?.id || t.createdBy === user?.id);
+  }, [todos, user, hasPermission]);
+
+  const value = {
+    todos: getVisibleTodos,
+    allTodos: todos,
+    addTodo,
+    updateTodo,
+    deleteTodo,
+    toggleTodo,
+    assignTodo
   };
 
   return (
-    <TodoContext.Provider value={{
-      todos,
-      addTodo,
-      updateTodo,
-      deleteTodo,
-      toggleTodo
-    }}>
+    <TodoContext.Provider value={value}>
       {children}
     </TodoContext.Provider>
   );
@@ -59,3 +120,5 @@ export const useTodos =  => {
   }
   return context;
 };
+
+export default TodoContext;

@@ -1,46 +1,87 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, ROLES } from '../context/AuthContext';
 
 const Login =  => {
-  const [selectedUser, setSelectedUser] = useState();
-  const { users, login } = useAuth;
+  const [username, setUsername] = useState();
+  const [password, setPassword] = useState();
+  const [error, setError] = useState();
+  const { login } = useAuth;
 
-  const handleLogin = (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault;
-    if (selectedUser) {
-      login(selectedUser);
+    setError();
+    const result = login(username, password);
+    if (!result.success) {
+      setError(result.error);
     }
   };
 
+  const demoCredentials = [
+    { role: 'Admin', username: 'admin', password: 'admin123', desc: 'Full access' },
+    { role: 'Manager', username: 'manager', password: 'manager123', desc: 'Manage & assign todos' },
+    { role: 'User', username: 'user', password: 'user123', desc: 'Create & manage own todos' },
+    { role: 'Viewer', username: 'viewer', password: 'viewer123', desc: 'Read-only access' }
+  ];
+
   return (
     <div className="login-container">
-      <h2>Login to TodoList RBAC App</h2>
-      <p style={{ marginBottom: '20px', color: '#666' }}>
-        Select a user to login and experience different permission levels
-      </p>
-      <form className="login-form" onSubmit={handleLogin}>
-        <select 
-          value={selectedUser} 
-          onChange={(e) => setSelectedUser(e.target.value)}
-          required
-        >
-          <option value="">Select a user...</option>
-          {users.map(user => (
-            <option key={user.id} value={user.id}>
-              {user.name} ({user.role})
-            </option>
-          ))}
-        </select>
-        <button type="submit">Login</button>
-      </form>
-      
-      <div className="permissions-info">
-        <h4>Role Permissions:</h4>
-        <ul>
-          <li><strong>Admin:</strong> Full access - can manage all todos and users</li>
-          <li><strong>Manager:</strong> Can create, read, update any todo, delete own todos</li>
-          <li><strong>User:</strong> Can only manage their own todos</li>
-        </ul>
+      <div className="login-card">
+        <h1>TodoList RBAC</h1>
+        <p className="subtitle">Role-Based Access Control Demo</p>
+        
+        <form onSubmit={handleSubmit} className="login-form">
+          {error && <div className="error-message">{error}</div>}
+          
+          <div className="form-group">
+            <label htmlFor="username">Username</label>
+            <input
+              type="text"
+              id="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="Enter username"
+              required
+            />
+          </div>
+          
+          <div className="form-group">
+            <label htmlFor="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter password"
+              required
+            />
+          </div>
+          
+          <button type="submit" className="btn btn-primary">
+            Sign In
+          </button>
+        </form>
+
+        <div className="demo-credentials">
+          <h3>Demo Accounts</h3>
+          <div className="credentials-grid">
+            {demoCredentials.map((cred) => (
+              <div 
+                key={cred.role} 
+                className="credential-card"
+                onClick={ => {
+                  setUsername(cred.username);
+                  setPassword(cred.password);
+                }}
+              >
+                <span className={`role-badge role-${cred.role.toLowerCase}`}>
+                  {cred.role}
+                </span>
+                <p className="credential-desc">{cred.desc}</p>
+                <code>{cred.username} / {cred.password}</code>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </div>
   );
